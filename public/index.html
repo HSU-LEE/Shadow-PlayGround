@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Shadow PlayGround</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="stage-wrap">
+        <button id="menuBtn" class="menu-btn" aria-label="메뉴 열기">☰</button>
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="outputCanvas"></canvas>
+        <canvas id="fxCanvas"></canvas>
+
+        <div class="start-overlay" id="startOverlay">
+          <button id="startBtn">시작</button>
+          <p id="gestureTip">조명에 손을 올려 그림자를 만들어보세요 : )</p>
+        </div>
+
+        <div class="sr-only">현재 그림자: <strong id="spellName">준비 중...</strong></div>
+      </section>
+    </main>
+
+    <div id="sidebarBackdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
+    <aside id="sidebar" class="sidebar hidden" aria-label="프로젝트 메뉴">
+      <button id="closeSidebarBtn" class="close-sidebar-btn" aria-label="메뉴 닫기">×</button>
+      <h2>Shadow PlayGround</h2>
+
+      <section class="sidebar-section">
+        <h3>GitHub</h3>
+        <a href="https://github.com/HSU-LEE" target="_blank" rel="noopener noreferrer">
+          github.com/HSU-LEE
+        </a>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>설명</h3>
+        <p>조명에 손을 올려 그림자를 만들어보세요 : )</p>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>후원</h3>
+        <a href="https://buymeacoffee.com/yourname" target="_blank" rel="noopener noreferrer">
+          Buy Me a Coffee
+        </a>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>버그 제보 및 문의</h3>
+        <p>harry.srobot.2011@gmail.com</p>
+      </section>
+    </aside>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

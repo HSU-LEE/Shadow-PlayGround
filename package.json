@@ -1,0 +1,31 @@
+{
+  "name": "shadow-playground",
+  "version": "1.0.0",
+  "description": "MediaPipe Hands + Canvas — wall shadow playground in the browser",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "mediapipe",
+    "hands",
+    "canvas",
+    "webcam",
+    "shadow"
+  ],
+  "author": "HEE SEUNG LEE",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HSU-LEE/Shadow-PlayGround.git"
+  },
+  "homepage": "https://hsu-lee.github.io/Shadow-PlayGround/",
+  "bugs": {
+    "url": "https://github.com/HSU-LEE/Shadow-PlayGround/issues"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

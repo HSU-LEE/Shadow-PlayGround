@@ -1,0 +1,178 @@
+:root {
+  --bg: #13100a;
+  --text: #fff2d6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  color: var(--text);
+  background: #000;
+  min-height: 100dvh;
+}
+
+.app {
+  width: 100vw;
+  height: 100dvh;
+}
+
+.stage-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.menu-btn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 12;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 236, 201, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.58);
+  color: #ffe8c4;
+  font-size: 1.2rem;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.menu-btn:hover {
+  background: rgba(31, 22, 14, 0.78);
+}
+
+#video,
+#outputCanvas,
+#fxCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#video {
+  object-fit: cover;
+  opacity: 0;
+}
+
+#outputCanvas,
+#fxCanvas {
+  pointer-events: none;
+}
+
+.start-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 223, 170, 0.08), rgba(0, 0, 0, 0.82) 55%);
+  z-index: 10;
+}
+
+#startBtn {
+  justify-self: center;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #a97639, #f0bd6f);
+  color: white;
+  padding: 12px 28px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+#startBtn:hover {
+  filter: brightness(1.1);
+}
+
+.start-overlay p {
+  margin: 0;
+  font-size: 0.86rem;
+  opacity: 0.8;
+}
+
+.start-overlay.hidden {
+  display: none;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  z-index: 18;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: min(360px, 84vw);
+  height: 100dvh;
+  padding: 18px 16px 16px;
+  background: linear-gradient(180deg, rgba(26, 18, 11, 0.98), rgba(8, 5, 3, 0.98));
+  color: #ffeacc;
+  border-right: 1px solid rgba(255, 225, 171, 0.2);
+  z-index: 20;
+}
+
+.sidebar h2 {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+}
+
+.sidebar-section {
+  margin-bottom: 14px;
+}
+
+.sidebar-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.sidebar-section p,
+.sidebar-section a {
+  margin: 0;
+  color: #ffd89b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.close-sidebar-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 225, 171, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffeacc;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.hidden {
+  display: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
