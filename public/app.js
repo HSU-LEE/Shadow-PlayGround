@@ -21,12 +21,9 @@ let smoothedLightShadows = [];
 let smoothedHandSizes = [];
 let smoothedHands = [];
 
-/** 랜드마크 추적: 낮을수록 덜 튐(더 부드러움) */
-const POINT_SMOOTHING = 0.11;
-/** 벽의 밝은 원(스포트라이트) 위치 */
-const LIGHT_SPOT_SMOOTHING = 0.085;
-/** 그림자 투영용 가상 광원 — 손목 쪽에 가깝게 두어 팔 실루엣 완화 */
-const LIGHT_SHADOW_SMOOTHING = 0.09;
+const POINT_SMOOTHING = 0.13;
+const LIGHT_SPOT_SMOOTHING = 0.1;
+const LIGHT_SHADOW_SMOOTHING = 0.105;
 const HAND_SIZE_SMOOTHING = 0.14;
 
 function resizeCanvases() {
@@ -42,7 +39,6 @@ function resizeCanvases() {
 
 window.addEventListener("resize", resizeCanvases);
 
-/** 랜드마크는 카메라 이미지 좌표계(왼쪽이 x=0) — 캔버스는 거울처럼 보이게 가로 반전 */
 function toPx(lm) {
   return {
     x: (1 - lm.x) * width,
@@ -113,10 +109,6 @@ function smoothScalar(prev, next, t) {
   return lerp(prev, next, t);
 }
 
-/**
- * 스포트라이트(밝은 영역)는 손바닥·손가락 쪽,
- * 그림자 계산용 광원은 손목~손바닥 사이에 두어 손목·팔 쪽 그림자를 짧게 보이게 함.
- */
 function getLightTargetsForHand(points, handSize) {
   const wrist = points[0];
   const palm = points[9];
