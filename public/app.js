@@ -12,19 +12,177 @@ const closeSidebarBtn = document.getElementById("closeSidebarBtn");
 const outputCtx = outputCanvas.getContext("2d");
 const fxCtx = fxCanvas.getContext("2d");
 
+fxCtx.imageSmoothingEnabled = true;
+
+const DEBUG_METRICS =
+  typeof window !== "undefined" &&
+  (new URLSearchParams(window.location.search).get("debug") === "1" ||
+    window.localStorage?.getItem("shadowPlaygroundDebug") === "1");
+
+const HYSTERESIS_MS = 220;
+const IDEAL_WIDTH = 1280;
+const IDEAL_HEIGHT = 720;
+const IDEAL_FPS = 30;
+
 let width = 1280;
 let height = 720;
 let camera = null;
 let lastFrameTime = performance.now();
+let lastResultAt = performance.now();
+let prevResultIntervalMs = 1000 / 30;
+
 let smoothedLightSpots = [];
 let smoothedLightShadows = [];
 let smoothedHandSizes = [];
 let smoothedHands = [];
 
-const POINT_SMOOTHING = 0.13;
-const LIGHT_SPOT_SMOOTHING = 0.1;
-const LIGHT_SHADOW_SMOOTHING = 0.105;
-const HAND_SIZE_SMOOTHING = 0.14;
+let prevSlotWristsPx = [];
+let euroFiltersBySlot = [];
+
+let lastValidHandsNormalized = null;
+let lastValidTime = 0;
+
+const metrics = {
+  frames: 0,
+  detectionFrames: 0,
+  lastLogAt: 0,
+  rollingFps: 0,
+  rollingDetectionRate: 0,
+};
+
+class OneEuroFilter1D {
+  constructor(minCutoff = 1.0, beta = 0.007, dcutoff = 1.0) {
+    this.minCutoff = minCutoff;
+    this.beta = beta;
+    this.dcutoff = dcutoff;
+    this.xPrev = null;
+    this.dxPrev = 0;
+  }
+
+  reset() {
+    this.xPrev = null;
+    this.dxPrev = 0;
+  }
+
+  smoothingFactor(cutoffHz, dt) {
+    const r = 2 * Math.PI * cutoffHz * dt;
+    return r / (r + 1);
+  }
+
+  filter(x, dt) {
+    if (this.xPrev == null || dt <= 0) {
+      this.xPrev = x;
+      return x;
+    }
+    const dx = (x - this.xPrev) / dt;
+    const ad = this.smoothingFactor(this.dcutoff, dt);
+    const dxHat = ad * dx + (1 - ad) * this.dxPrev;
+    this.dxPrev = dxHat;
+    const cutoff = this.minCutoff + this.beta * Math.abs(dxHat);
+    const a = this.smoothingFactor(cutoff, dt);
+    const xHat = a * x + (1 - a) * this.xPrev;
+    this.xPrev = xHat;
+    return xHat;
+  }
+}
+
+const EURO_MIN_CUTOFF = 0.55;
+const EURO_BETA = 0.005;
+const EURO_D_CUTOFF = 0.85;
+const EURO_Z_SCALE = 0.65;
+
+function createEuroFiltersForHand() {
+  const filters = [];
+  for (let i = 0; i < 21; i++) {
+    filters[i] = {
+      x: new OneEuroFilter1D(EURO_MIN_CUTOFF, EURO_BETA, EURO_D_CUTOFF),
+      y: new OneEuroFilter1D(EURO_MIN_CUTOFF, EURO_BETA, EURO_D_CUTOFF),
+      z: new OneEuroFilter1D(EURO_MIN_CUTOFF * EURO_Z_SCALE, EURO_BETA, EURO_D_CUTOFF),
+    };
+  }
+  return filters;
+}
+
+function resetEuroFiltersForSlot(slotIdx) {
+  euroFiltersBySlot[slotIdx] = createEuroFiltersForHand();
+}
+
+function ensureEuroSlotCount(count) {
+  while (euroFiltersBySlot.length < count) {
+    euroFiltersBySlot.push(createEuroFiltersForHand());
+  }
+  if (euroFiltersBySlot.length > count) {
+    euroFiltersBySlot.length = count;
+  }
+}
+
+function getMediaPipeHandsOptions() {
+  const params =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const hq = params?.get("hq") === "1";
+  const cores = typeof navigator !== "undefined" && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
+  const modelComplexity = hq && cores >= 4 ? 2 : 1;
+  return {
+    maxNumHands: 4,
+    modelComplexity,
+    minDetectionConfidence: 0.65,
+    minTrackingConfidence: 0.68,
+  };
+}
+
+function wristPxFromLandmarks(handLm) {
+  const w = handLm[0];
+  return { x: (1 - w.x) * width, y: w.y * height };
+}
+
+function matchHandsToSlots(currentHandsLm) {
+  const m = currentHandsLm.length;
+  if (m === 0) return [];
+
+  if (prevSlotWristsPx.length === 0 || prevSlotWristsPx.length !== m) {
+    return currentHandsLm.map((h, i) => i);
+  }
+
+  const pairs = [];
+  for (let slot = 0; slot < m; slot++) {
+    for (let cur = 0; cur < m; cur++) {
+      const w = wristPxFromLandmarks(currentHandsLm[cur]);
+      const p = prevSlotWristsPx[slot];
+      const d = Math.hypot(w.x - p.x, w.y - p.y);
+      pairs.push({ slot, cur, d });
+    }
+  }
+  pairs.sort((a, b) => a.d - b.d);
+
+  const assignedSlot = new Set();
+  const assignedCur = new Set();
+  const slotToCur = new Array(m).fill(-1);
+
+  for (const { slot, cur } of pairs) {
+    if (assignedSlot.has(slot) || assignedCur.has(cur)) continue;
+    assignedSlot.add(slot);
+    assignedCur.add(cur);
+    slotToCur[slot] = cur;
+  }
+
+  for (let slot = 0; slot < m; slot++) {
+    if (slotToCur[slot] === -1) {
+      for (let cur = 0; cur < m; cur++) {
+        if (!assignedCur.has(cur)) {
+          slotToCur[slot] = cur;
+          assignedCur.add(cur);
+          break;
+        }
+      }
+    }
+  }
+
+  return slotToCur;
+}
+
+function orderHandsForSlots(currentHandsLm, permutation) {
+  return permutation.map((curIdx) => currentHandsLm[curIdx]);
+}
 
 function resizeCanvases() {
   const rect = outputCanvas.getBoundingClientRect();
@@ -83,6 +241,12 @@ function getHandSizeFromPoints(pts) {
   return Math.max(maxX - minX, maxY - minY);
 }
 
+function shadowStretchK(z) {
+  const t = Math.max(0, -(z ?? 0));
+  const k = 0.52 + t * 0.72;
+  return Math.min(0.82, Math.max(0.4, k));
+}
+
 function projectPoint(p, light, k) {
   return {
     x: p.x + (p.x - light.x) * k,
@@ -107,6 +271,12 @@ function smoothPoint(prev, next, t) {
 function smoothScalar(prev, next, t) {
   if (prev == null || Number.isNaN(prev)) return next;
   return lerp(prev, next, t);
+}
+
+function dtToLerpAlpha(baseAlpha, dtSec) {
+  const ref = 1 / 60;
+  const k = 1 - Math.pow(1 - baseAlpha, dtSec / ref);
+  return Math.min(1, Math.max(0, k));
 }
 
 function getLightTargetsForHand(points, handSize) {
@@ -160,11 +330,11 @@ function convexHull(points) {
 function drawFingerShadow(points, indices, widthPx, light) {
   fxCtx.beginPath();
   const startRaw = points[indices[0]];
-  const start = projectPoint(startRaw, light, 0.55 + Math.max(0, -startRaw.z) * 1.25);
+  const start = projectPoint(startRaw, light, shadowStretchK(startRaw.z));
   fxCtx.moveTo(start.x, start.y);
   for (let i = 1; i < indices.length; i++) {
     const raw = points[indices[i]];
-    const p = projectPoint(raw, light, 0.55 + Math.max(0, -raw.z) * 1.25);
+    const p = projectPoint(raw, light, shadowStretchK(raw.z));
     fxCtx.lineTo(p.x, p.y);
   }
   fxCtx.lineCap = "round";
@@ -176,7 +346,7 @@ function drawFingerShadow(points, indices, widthPx, light) {
 function drawPalmSilhouette(points, light, edgeWidth) {
   const palmAnchors = [0, 1, 2, 5, 9, 13, 17].map((idx) => {
     const raw = points[idx];
-    return projectPoint(raw, light, 0.55 + Math.max(0, -raw.z) * 1.25);
+    return projectPoint(raw, light, shadowStretchK(raw.z));
   });
   const hull = convexHull(palmAnchors);
   if (hull.length < 3) return;
@@ -191,7 +361,20 @@ function drawPalmSilhouette(points, light, edgeWidth) {
   }
 }
 
-function drawShadowStage(handLandmarks) {
+function applyOneEuroToAllLandmarks(rawPoints, handIdx, dtSec, pointsOut) {
+  const filters = euroFiltersBySlot[handIdx];
+  for (let i = 0; i < 21; i++) {
+    const f = filters[i];
+    pointsOut[i] = {
+      x: f.x.filter(rawPoints[i].x, dtSec),
+      y: f.y.filter(rawPoints[i].y, dtSec),
+      z: f.z.filter(rawPoints[i].z ?? 0, dtSec),
+    };
+  }
+}
+
+function drawShadowStage(handLandmarks, dtSec, options = {}) {
+  const { freezeSmoothing = false } = options;
   fxCtx.clearRect(0, 0, width, height);
   fxCtx.fillStyle = "rgba(0, 0, 0, 0.96)";
   fxCtx.fillRect(0, 0, width, height);
@@ -200,6 +383,7 @@ function drawShadowStage(handLandmarks) {
 
   if (!smoothedHands || smoothedHands.length !== hands.length) {
     smoothedHands = hands.map((hand) => hand.map(toPx));
+    hands.forEach((_, i) => resetEuroFiltersForSlot(i));
   }
   if (!smoothedLightSpots || smoothedLightSpots.length !== hands.length) {
     const prev = smoothedLightSpots || [];
@@ -214,28 +398,49 @@ function drawShadowStage(handLandmarks) {
     smoothedHandSizes = hands.map((_, i) => (i < prev.length ? prev[i] : null));
   }
 
+  ensureEuroSlotCount(hands.length);
+
+  const lightAlpha = dtToLerpAlpha(0.055, dtSec);
+  const shadowAlpha = dtToLerpAlpha(0.058, dtSec);
+  const sizeAlpha = dtToLerpAlpha(0.09, dtSec);
+
   for (let handIdx = 0; handIdx < hands.length; handIdx++) {
     const hand = hands[handIdx];
     const rawPoints = hand.map(toPx);
-    const points = rawPoints.map((pt, i) => {
-      const prev = smoothedHands[handIdx][i];
-      const next = smoothPoint(prev, pt, POINT_SMOOTHING);
-      smoothedHands[handIdx][i] = next;
-      return next;
-    });
-    const handSizeRaw = getHandSizeFromPoints(points);
-    smoothedHandSizes[handIdx] = smoothScalar(smoothedHandSizes[handIdx], handSizeRaw, HAND_SIZE_SMOOTHING);
-    const handSize = smoothedHandSizes[handIdx];
+    let points;
+    if (freezeSmoothing) {
+      points = smoothedHands[handIdx];
+    } else {
+      points = rawPoints.map((p) => ({ ...p }));
+      applyOneEuroToAllLandmarks(rawPoints, handIdx, dtSec, points);
+      for (let i = 0; i < 21; i++) {
+        smoothedHands[handIdx][i] = points[i];
+      }
+    }
 
-    const { targetSpot, targetShadow } = getLightTargetsForHand(points, handSize);
-    smoothedLightSpots[handIdx] = smoothPoint(smoothedLightSpots[handIdx], targetSpot, LIGHT_SPOT_SMOOTHING);
-    smoothedLightShadows[handIdx] = smoothPoint(
-      smoothedLightShadows[handIdx],
-      targetShadow,
-      LIGHT_SHADOW_SMOOTHING
-    );
-    const lightSpot = smoothedLightSpots[handIdx];
-    const lightShadow = smoothedLightShadows[handIdx];
+    let handSize;
+    let lightSpot;
+    let lightShadow;
+
+    if (freezeSmoothing) {
+      handSize = smoothedHandSizes[handIdx];
+      lightSpot = smoothedLightSpots[handIdx];
+      lightShadow = smoothedLightShadows[handIdx];
+    } else {
+      const handSizeRaw = getHandSizeFromPoints(points);
+      smoothedHandSizes[handIdx] = smoothScalar(smoothedHandSizes[handIdx], handSizeRaw, sizeAlpha);
+      handSize = smoothedHandSizes[handIdx];
+
+      const { targetSpot, targetShadow } = getLightTargetsForHand(points, handSize);
+      smoothedLightSpots[handIdx] = smoothPoint(smoothedLightSpots[handIdx], targetSpot, lightAlpha);
+      smoothedLightShadows[handIdx] = smoothPoint(
+        smoothedLightShadows[handIdx],
+        targetShadow,
+        shadowAlpha
+      );
+      lightSpot = smoothedLightSpots[handIdx];
+      lightShadow = smoothedLightShadows[handIdx];
+    }
 
     const spotlightRadius = Math.max(170, Math.min(420, handSize * 1.55));
     const spotlight = fxCtx.createRadialGradient(
@@ -267,6 +472,10 @@ function drawShadowStage(handLandmarks) {
     drawFingerShadow(points, [17, 18, 19, 20], fingerBase * 0.8, lightShadow);
     fxCtx.shadowBlur = 0;
   }
+
+  if (!freezeSmoothing && hands.length > 0) {
+    prevSlotWristsPx = smoothedHands.map((h) => ({ x: h[0].x, y: h[0].y }));
+  }
 }
 
 function getHandsLightingInfo(hands) {
@@ -296,6 +505,45 @@ function getHandsLightingInfo(hands) {
   return { centerX, centerY, radius };
 }
 
+function clearTrackingState() {
+  smoothedHands = [];
+  smoothedLightSpots = [];
+  smoothedLightShadows = [];
+  smoothedHandSizes = [];
+  prevSlotWristsPx = [];
+  euroFiltersBySlot = [];
+  lastValidHandsNormalized = null;
+}
+
+function tryApplyVideoConstraints() {
+  const track = videoEl.srcObject?.getVideoTracks?.()?.[0];
+  if (!track?.applyConstraints) return;
+  track.applyConstraints({ frameRate: { ideal: IDEAL_FPS, max: 60 } }).catch(() => {});
+}
+
+function logMetrics(now, hadDetection, dtMs) {
+  if (!DEBUG_METRICS) return;
+  metrics.frames += 1;
+  if (hadDetection) metrics.detectionFrames += 1;
+  if (metrics.lastLogAt === 0) metrics.lastLogAt = now;
+  if (now - metrics.lastLogAt < 2000) return;
+  const elapsed = now - metrics.lastLogAt;
+  const fps = (metrics.frames / elapsed) * 1000;
+  const detRate = metrics.detectionFrames / Math.max(1, metrics.frames);
+  metrics.rollingFps = fps;
+  metrics.rollingDetectionRate = detRate;
+  console.info(
+    "[ShadowPlayGround]",
+    `fps≈${fps.toFixed(1)}`,
+    `detectionRatio=${detRate.toFixed(2)}`,
+    `onResultsΔ≈${dtMs.toFixed(1)}ms`,
+    `modelComplexity=${getMediaPipeHandsOptions().modelComplexity}`
+  );
+  metrics.frames = 0;
+  metrics.detectionFrames = 0;
+  metrics.lastLogAt = now;
+}
+
 function openSidebar() {
   sidebar.classList.remove("hidden");
   sidebarBackdrop.classList.remove("hidden");
@@ -314,31 +562,46 @@ async function startCamera() {
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
-  hands.setOptions({
-    maxNumHands: 4,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.75,
-    minTrackingConfidence: 0.78,
-  });
+  hands.setOptions(getMediaPipeHandsOptions());
 
   hands.onResults((results) => {
-    const now = performance.now();
-    lastFrameTime = now;
+    try {
+      const now = performance.now();
+      const dtMs = now - lastResultAt;
+      prevResultIntervalMs = dtMs > 0 ? dtMs : prevResultIntervalMs;
+      const dtSec = Math.min(0.08, Math.max(1 / 240, dtMs / 1000));
+      lastResultAt = now;
+      lastFrameTime = now;
 
-    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-      const handsDetected = results.multiHandLandmarks;
-      const lightInfo = getHandsLightingInfo(handsDetected);
-      drawWallBackground(lightInfo.centerX, lightInfo.centerY, lightInfo.radius);
-      drawShadowStage(handsDetected);
-    } else {
-      drawWallBackground();
-      fxCtx.clearRect(0, 0, width, height);
-      fxCtx.fillStyle = "rgba(0, 0, 0, 0.96)";
-      fxCtx.fillRect(0, 0, width, height);
-      smoothedHands = [];
-      smoothedLightSpots = [];
-      smoothedLightShadows = [];
-      smoothedHandSizes = [];
+      const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+      let handsForDraw = null;
+      let freezeSmoothing = false;
+
+      if (hasHands) {
+        const perm = matchHandsToSlots(results.multiHandLandmarks);
+        handsForDraw = orderHandsForSlots(results.multiHandLandmarks, perm);
+        lastValidHandsNormalized = handsForDraw;
+        lastValidTime = now;
+      } else if (lastValidHandsNormalized && now - lastValidTime < HYSTERESIS_MS) {
+        handsForDraw = lastValidHandsNormalized;
+        freezeSmoothing = true;
+      }
+
+      logMetrics(now, hasHands, prevResultIntervalMs);
+
+      if (handsForDraw && handsForDraw.length > 0) {
+        const lightInfo = getHandsLightingInfo(handsForDraw);
+        drawWallBackground(lightInfo.centerX, lightInfo.centerY, lightInfo.radius);
+        drawShadowStage(handsForDraw, dtSec, { freezeSmoothing });
+      } else {
+        drawWallBackground();
+        fxCtx.clearRect(0, 0, width, height);
+        fxCtx.fillStyle = "rgba(0, 0, 0, 0.96)";
+        fxCtx.fillRect(0, 0, width, height);
+        clearTrackingState();
+      }
+    } catch (err) {
+      console.error("[ShadowPlayGround] onResults:", err);
     }
   });
 
@@ -346,13 +609,16 @@ async function startCamera() {
     onFrame: async () => {
       await hands.send({ image: videoEl });
     },
-    width: 1280,
-    height: 720,
+    width: IDEAL_WIDTH,
+    height: IDEAL_HEIGHT,
+    facingMode: "user",
   });
 
   await camera.start();
+  tryApplyVideoConstraints();
   resizeCanvases();
-  lastFrameTime = performance.now();
+  lastResultAt = performance.now();
+  lastFrameTime = lastResultAt;
   drawWallBackground();
 
   startBtn.textContent = "실행 중";

@@ -147,6 +147,12 @@ body {
   word-break: break-word;
 }
 
+.sidebar-section p.sidebar-hint {
+  margin-top: 10px;
+  font-size: 0.82rem;
+  opacity: 0.88;
+}
+
 .close-sidebar-btn {
   position: absolute;
   top: 10px;
