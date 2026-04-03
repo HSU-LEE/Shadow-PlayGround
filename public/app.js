@@ -42,6 +42,10 @@ let euroFiltersBySlot = [];
 let lastValidHandsNormalized = null;
 let lastValidTime = 0;
 
+let smoothedWallCenterX = null;
+let smoothedWallCenterY = null;
+let smoothedWallRadius = null;
+
 const metrics = {
   frames: 0,
   detectionFrames: 0,
@@ -211,8 +215,8 @@ function drawWallBackground(lightX = width * 0.5, lightY = height * 0.44, radius
   outputCtx.fillRect(0, 0, width, height);
 
   const wall = outputCtx.createRadialGradient(lightX, lightY, 30, lightX, lightY, radius);
-  wall.addColorStop(0, "rgba(246, 214, 160, 0.92)");
-  wall.addColorStop(0.45, "rgba(188, 139, 82, 0.7)");
+  wall.addColorStop(0, "rgba(236, 206, 150, 0.78)");
+  wall.addColorStop(0.45, "rgba(188, 139, 82, 0.62)");
   wall.addColorStop(0.8, "rgba(45, 31, 18, 0.25)");
   wall.addColorStop(1, "rgba(0, 0, 0, 0)");
   outputCtx.fillStyle = wall;
@@ -505,6 +509,31 @@ function getHandsLightingInfo(hands) {
   return { centerX, centerY, radius };
 }
 
+function getSmoothedWallLighting(hands, dtSec) {
+  const raw = getHandsLightingInfo(hands);
+  const aPos = dtToLerpAlpha(0.052, dtSec);
+  const aRad = dtToLerpAlpha(0.032, dtSec);
+
+  if (smoothedWallCenterX == null || smoothedWallCenterY == null || smoothedWallRadius == null) {
+    smoothedWallCenterX = raw.centerX;
+    smoothedWallCenterY = raw.centerY;
+    smoothedWallRadius = raw.radius;
+  } else {
+    smoothedWallCenterX = lerp(smoothedWallCenterX, raw.centerX, aPos);
+    smoothedWallCenterY = lerp(smoothedWallCenterY, raw.centerY, aPos);
+    smoothedWallRadius = lerp(smoothedWallRadius, raw.radius, aRad);
+    smoothedWallRadius = Math.max(300, Math.min(780, smoothedWallRadius));
+  }
+
+  return { centerX: smoothedWallCenterX, centerY: smoothedWallCenterY, radius: smoothedWallRadius };
+}
+
+function resetWallLightingSmoothing() {
+  smoothedWallCenterX = null;
+  smoothedWallCenterY = null;
+  smoothedWallRadius = null;
+}
+
 function clearTrackingState() {
   smoothedHands = [];
   smoothedLightSpots = [];
@@ -513,6 +542,7 @@ function clearTrackingState() {
   prevSlotWristsPx = [];
   euroFiltersBySlot = [];
   lastValidHandsNormalized = null;
+  resetWallLightingSmoothing();
 }
 
 function tryApplyVideoConstraints() {
@@ -590,7 +620,7 @@ async function startCamera() {
       logMetrics(now, hasHands, prevResultIntervalMs);
 
       if (handsForDraw && handsForDraw.length > 0) {
-        const lightInfo = getHandsLightingInfo(handsForDraw);
+        const lightInfo = getSmoothedWallLighting(handsForDraw, dtSec);
         drawWallBackground(lightInfo.centerX, lightInfo.centerY, lightInfo.radius);
         drawShadowStage(handsForDraw, dtSec, { freezeSmoothing });
       } else {
