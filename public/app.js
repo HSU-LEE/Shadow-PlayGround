@@ -8,6 +8,11 @@ const menuBtn = document.getElementById("menuBtn");
 const sidebar = document.getElementById("sidebar");
 const sidebarBackdrop = document.getElementById("sidebarBackdrop");
 const closeSidebarBtn = document.getElementById("closeSidebarBtn");
+const spellNameEl = document.getElementById("spellName");
+const particleCanvas = document.getElementById("particleCanvas");
+const stageWrap = document.querySelector(".stage-wrap");
+const modeFreeBtn = document.getElementById("modeFreeBtn");
+const modeChallengeBtn = document.getElementById("modeChallengeBtn");
 
 const outputCtx = outputCanvas.getContext("2d");
 const fxCtx = fxCanvas.getContext("2d");
@@ -27,7 +32,6 @@ const IDEAL_FPS = 30;
 let width = 1280;
 let height = 720;
 let camera = null;
-let lastFrameTime = performance.now();
 let lastResultAt = performance.now();
 let prevResultIntervalMs = 1000 / 30;
 
@@ -50,9 +54,541 @@ const metrics = {
   frames: 0,
   detectionFrames: 0,
   lastLogAt: 0,
-  rollingFps: 0,
-  rollingDetectionRate: 0,
 };
+
+(function (global) {
+  function distLm(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy) || 0;
+  }
+  function handScaleLm(lm) {
+    return Math.max(distLm(lm[5], lm[17]), distLm(lm[0], lm[9]), 0.04);
+  }
+  function fingerExtended(lm, tip, pip, mcp) {
+    const scale = handScaleLm(lm);
+    const dTip = distLm(lm[tip], lm[0]);
+    const dPip = distLm(lm[pip], lm[0]);
+    if (dTip < dPip * 1.06) return false;
+    if (dTip < scale * 0.28) return false;
+    const dMcp = distLm(lm[mcp], lm[0]);
+    return dTip > dMcp * 0.92;
+  }
+  function thumbExtended(lm) {
+    const scale = handScaleLm(lm);
+    const dTip = distLm(lm[4], lm[0]);
+    const dIp = distLm(lm[3], lm[0]);
+    if (dTip < dIp * 1.02) return false;
+    return distLm(lm[4], lm[8]) > scale * 0.22 && dTip > scale * 0.2;
+  }
+  function countExtendedFingers(lm) {
+    let n = 0;
+    if (thumbExtended(lm)) n += 1;
+    if (fingerExtended(lm, 8, 6, 5)) n += 1;
+    if (fingerExtended(lm, 12, 10, 9)) n += 1;
+    if (fingerExtended(lm, 16, 14, 13)) n += 1;
+    if (fingerExtended(lm, 20, 18, 17)) n += 1;
+    return n;
+  }
+  function isPinch(lm) {
+    const scale = handScaleLm(lm);
+    return distLm(lm[4], lm[8]) < scale * 0.35;
+  }
+
+  function fingerCurledForFist(lm, tip, pip, mcp) {
+    const scale = handScaleLm(lm);
+    const dTip = distLm(lm[tip], lm[0]);
+    const dPip = distLm(lm[pip], lm[0]);
+    const dMcp = distLm(lm[mcp], lm[0]);
+    if (dTip <= dPip * 1.34) return true;
+    if (distLm(lm[tip], lm[pip]) < scale * 0.46) return true;
+    if (dTip < dMcp * 0.98) return true;
+    return false;
+  }
+
+  function fourNonThumbCurledForFist(lm) {
+    return (
+      fingerCurledForFist(lm, 8, 6, 5) &&
+      fingerCurledForFist(lm, 12, 10, 9) &&
+      fingerCurledForFist(lm, 16, 14, 13) &&
+      fingerCurledForFist(lm, 20, 18, 17)
+    );
+  }
+
+  function countNonThumbCurledForFist(lm) {
+    let n = 0;
+    if (fingerCurledForFist(lm, 8, 6, 5)) n += 1;
+    if (fingerCurledForFist(lm, 12, 10, 9)) n += 1;
+    if (fingerCurledForFist(lm, 16, 14, 13)) n += 1;
+    if (fingerCurledForFist(lm, 20, 18, 17)) n += 1;
+    return n;
+  }
+
+  function detectPrimaryGesture(lm) {
+    if (!lm || lm.length < 21) return null;
+    if (handScaleLm(lm) < 0.03) return null;
+    const scale = handScaleLm(lm);
+    const ext = countExtendedFingers(lm);
+    const idx = fingerExtended(lm, 8, 6, 5);
+    const mid = fingerExtended(lm, 12, 10, 9);
+    const ring = fingerExtended(lm, 16, 14, 13);
+    const pink = fingerExtended(lm, 20, 18, 17);
+    const th = thumbExtended(lm);
+    if (ext >= 4) return "open_palm";
+    if (idx && mid && !ring && !pink) return "peace";
+
+    // 주먹을 핀치보다 먼저 본다 — 말아쥔 상태에서 엄지·검지가 가깝게 잡히며 오인되는 경우가 많음
+    if (fourNonThumbCurledForFist(lm)) {
+      const thumbIndexGap = distLm(lm[4], lm[8]);
+      if (th && thumbIndexGap > scale * 0.38) return "thumbs_up";
+      return "fist";
+    }
+
+    if (isPinch(lm)) return "pinch";
+
+    if (ext <= 1 && th) return "thumbs_up";
+    if (ext <= 1) return "fist";
+
+    const curled = countNonThumbCurledForFist(lm);
+    if (curled >= 3 && ext <= 2) return "fist";
+
+    return "other";
+  }
+  const LABELS = {
+    open_palm: "손바닥 펼침",
+    fist: "주먹",
+    peace: "브이",
+    thumbs_up: "엄지척",
+    pinch: "집게",
+    other: "그림자 연습",
+    none: "손을 비춰 주세요",
+  };
+  global.ShadowGestures = {
+    detectPrimaryGesture,
+    countExtendedFingers,
+    gestureLabel: (id) => LABELS[id] || LABELS.other,
+  };
+})(typeof window !== "undefined" ? window : globalThis);
+
+(function (global) {
+  const G = global.ShadowGestures;
+  const CHALLENGES = [
+    { id: "c1", target: "open_palm", holdMs: 2200, title: "손바닥을 펼쳐 조명을 가득 채워 보세요", spell: "손바닥 펼침" },
+    { id: "c2", target: "fist", holdMs: 2000, title: "주먹을 쥐어 그림자를 모아 보세요", spell: "주먹" },
+    { id: "c3", target: "peace", holdMs: 2200, title: "브이로 인사해 보세요", spell: "브이" },
+    { id: "c4", target: "thumbs_up", holdMs: 1800, title: "엄지척으로 응원해 보세요", spell: "엄지척" },
+  ];
+  let mode = "free";
+  let particleCanvas = null;
+  let particleCtx = null;
+  let spellNameElRef = null;
+  let hudSpellEl = null;
+  let challengeTitleEl = null;
+  let comboEl = null;
+  let progressEl = null;
+  let challengeIdx = 0;
+  let holdAccumMs = 0;
+  let combo = 0;
+  let phase = "active";
+  let phaseUntil = 0;
+  const particles = [];
+  let lastGesture = "none";
+
+  function pickRandomChallengeIndex() {
+    if (CHALLENGES.length < 2) {
+      challengeIdx = 0;
+      return;
+    }
+    let next;
+    do {
+      next = Math.floor(Math.random() * CHALLENGES.length);
+    } while (next === challengeIdx);
+    challengeIdx = next;
+  }
+
+  function playChimeForGesture(gesture) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const profiles = {
+      open_palm: { f0: 659.25, f1: 783.99, t0: "sine", t1: "sine", gap: 0.06, peak: 0.11 },
+      fist: { f0: 196, f1: 174.61, t0: "triangle", t1: "triangle", gap: 0.04, peak: 0.1 },
+      peace: { f0: 523.25, f1: 659.25, t0: "sine", t1: "sine", gap: 0.09, peak: 0.1 },
+      pinch: { f0: 1046.5, f1: null, t0: "sine", t1: null, gap: 0, peak: 0.09 },
+      thumbs_up: { f0: 392, f1: 493.88, t0: "sine", t1: "sine", gap: 0.07, peak: 0.12 },
+    };
+    const p = profiles[gesture] || profiles.open_palm;
+    try {
+      const ctx = new AC();
+      const schedule = (freq, type, tStart, dur, peak) => {
+        if (freq == null) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + tStart);
+        g.gain.setValueAtTime(0.001, ctx.currentTime + tStart);
+        g.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + tStart + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + tStart + dur);
+        osc.start(ctx.currentTime + tStart);
+        osc.stop(ctx.currentTime + tStart + dur + 0.02);
+      };
+      schedule(p.f0, p.t0, 0, 0.2, p.peak);
+      if (p.f1 != null) schedule(p.f1, p.t1, p.gap, 0.18, p.peak * 0.85);
+      const closeAt = ctx.currentTime + 0.35 + (p.f1 != null ? p.gap : 0);
+      setTimeout(() => {
+        try {
+          ctx.close();
+        } catch (_) {}
+      }, Math.ceil((closeAt - ctx.currentTime) * 1000) + 80);
+    } catch (_) {}
+  }
+
+  function handCenterPx(lm, w, h) {
+    if (!lm || lm.length < 10) return { x: w * 0.5, y: h * 0.42 };
+    const px = (i) => ({ x: (1 - lm[i].x) * w, y: lm[i].y * h });
+    const a = px(0);
+    const b = px(5);
+    const c = px(9);
+    return { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+  }
+
+  function pushP(base) {
+    particles.push({
+      x: base.x,
+      y: base.y,
+      vx: base.vx,
+      vy: base.vy,
+      life: base.life ?? 0.88,
+      age: 0,
+      hue: base.hue,
+      grav: base.grav ?? 90,
+      lightness: base.lightness ?? 72,
+      sat: base.sat ?? 85,
+      size0: base.size0 ?? 2,
+      size1: base.size1 ?? 3,
+      kind: base.kind ?? "circle",
+      rot: base.rot ?? 0,
+      rotSpd: base.rotSpd ?? 0,
+    });
+  }
+
+  function spawnGestureClearEffect(gesture, cx, cy, w, h) {
+    const rnd = (a, b) => a + Math.random() * (b - a);
+
+    if (gesture === "open_palm") {
+      const n = 40;
+      for (let i = 0; i < n; i++) {
+        const ang = (Math.PI * 2 * i) / n + rnd(-0.35, 0.35);
+        const sp = rnd(1.4, 3.4) * 46;
+        pushP({
+          x: cx + rnd(-6, 6),
+          y: cy + rnd(-6, 6),
+          vx: Math.cos(ang) * sp,
+          vy: Math.sin(ang) * sp + rnd(-30, 10),
+          life: rnd(0.95, 1.25),
+          hue: rnd(36, 52),
+          grav: rnd(28, 48),
+          lightness: rnd(74, 86),
+          sat: rnd(82, 96),
+          size0: 2.2,
+          size1: 4.2,
+        });
+      }
+      return;
+    }
+
+    if (gesture === "fist") {
+      const n = 22;
+      for (let i = 0; i < n; i++) {
+        const ang = rnd(0, Math.PI * 2);
+        const sp = rnd(0.3, 1.8) * 55;
+        pushP({
+          x: cx + rnd(-14, 14),
+          y: cy + rnd(-14, 14),
+          vx: Math.cos(ang) * sp * 0.35,
+          vy: Math.sin(ang) * sp * 0.35 + rnd(10, 40),
+          life: rnd(0.55, 0.85),
+          hue: rnd(22, 38),
+          grav: rnd(120, 175),
+          lightness: rnd(48, 62),
+          sat: rnd(55, 72),
+          size0: 1.8,
+          size1: 2.8,
+        });
+      }
+      return;
+    }
+
+    if (gesture === "peace") {
+      const emit = (ox, oy, bias) => {
+        const n = 18;
+        for (let i = 0; i < n; i++) {
+          const ang = (-Math.PI * 0.35 + (Math.PI * 0.7 * i) / (n - 1)) * bias + rnd(-0.2, 0.2);
+          const sp = rnd(1.2, 2.6) * 42;
+          pushP({
+            x: cx + ox + rnd(-4, 4),
+            y: cy + oy + rnd(-4, 4),
+            vx: Math.cos(ang) * sp,
+            vy: Math.sin(ang) * sp - rnd(15, 45),
+            life: rnd(0.82, 1.05),
+            hue: bias > 0 ? rnd(42, 58) : rnd(155, 175),
+            grav: rnd(55, 78),
+            lightness: rnd(70, 82),
+            sat: rnd(78, 92),
+            size0: 2,
+            size1: 3.6,
+          });
+        }
+      };
+      emit(-72, -8, 1);
+      emit(72, -8, -1);
+      return;
+    }
+
+    if (gesture === "pinch") {
+      const n = 16;
+      for (let i = 0; i < n; i++) {
+        const ang = (Math.PI * 2 * i) / n + rnd(-0.15, 0.15);
+        const sp = rnd(2.2, 4.2) * 38;
+        pushP({
+          x: cx + rnd(-3, 3),
+          y: cy + rnd(-3, 3),
+          vx: Math.cos(ang) * sp,
+          vy: Math.sin(ang) * sp - rnd(25, 55),
+          life: rnd(0.45, 0.72),
+          hue: rnd(275, 305),
+          grav: rnd(70, 95),
+          lightness: rnd(68, 80),
+          sat: rnd(88, 98),
+          size0: 1.4,
+          size1: 2.4,
+          kind: "star",
+          rot: rnd(0, Math.PI * 2),
+          rotSpd: rnd(-5, 5),
+        });
+      }
+      return;
+    }
+
+    if (gesture === "thumbs_up") {
+      const n = 30;
+      for (let i = 0; i < n; i++) {
+        const ang = rnd(-Math.PI * 0.55, Math.PI * 0.55) - Math.PI * 0.5;
+        const sp = rnd(0.8, 2.4) * 40;
+        pushP({
+          x: cx + rnd(-10, 10),
+          y: cy + rnd(4, 18),
+          vx: Math.cos(ang) * sp * 0.65 + rnd(-25, 25),
+          vy: -rnd(95, 165) + Math.sin(ang) * sp * 0.25,
+          life: rnd(0.75, 1.05),
+          hue: rnd(44, 56),
+          grav: rnd(38, 62),
+          lightness: rnd(72, 84),
+          sat: rnd(86, 96),
+          size0: 2,
+          size1: 3.8,
+        });
+      }
+      return;
+    }
+
+    const n = 26;
+    for (let i = 0; i < n; i++) {
+      const ang = (Math.PI * 2 * i) / n + rnd(-0.3, 0.3);
+      const sp = rnd(1.2, 2.8) * 40;
+      pushP({
+        x: cx,
+        y: cy,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 18,
+        life: rnd(0.8, 1.05),
+        hue: rnd(34, 58),
+        grav: 90,
+      });
+    }
+  }
+
+  function updateParticles(dtSec, w, h) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.age += dtSec;
+      p.x += p.vx * dtSec;
+      p.y += p.vy * dtSec;
+      p.vy += (p.grav ?? 90) * dtSec;
+      if (p.rotSpd) p.rot += p.rotSpd * dtSec;
+      if (p.age > p.life || p.y > h + 40 || p.x < -40 || p.x > w + 40) particles.splice(i, 1);
+    }
+  }
+
+  function drawParticles(w, h) {
+    if (!particleCtx) return;
+    particleCtx.clearRect(0, 0, w, h);
+    for (const p of particles) {
+      const t = 1 - p.age / p.life;
+      particleCtx.globalAlpha = Math.max(0, t * 0.9);
+      const L = p.lightness ?? 72;
+      const S = p.sat ?? 85;
+      particleCtx.fillStyle = `hsla(${p.hue}, ${S}%, ${L}%, 1)`;
+      const r = (p.size0 ?? 2) + (p.size1 ?? 3) * t;
+      if (p.kind === "star") {
+        particleCtx.save();
+        particleCtx.translate(p.x, p.y);
+        particleCtx.rotate(p.rot || 0);
+        particleCtx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const a = (Math.PI / 2) * k;
+          particleCtx.moveTo(0, 0);
+          particleCtx.lineTo(Math.cos(a) * r * 1.35, Math.sin(a) * r * 1.35);
+        }
+        particleCtx.fill();
+        particleCtx.restore();
+      } else {
+        particleCtx.beginPath();
+        particleCtx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        particleCtx.fill();
+      }
+    }
+    particleCtx.globalAlpha = 1;
+  }
+
+  function setSpellText(spell, sub) {
+    if (spellNameElRef) spellNameElRef.textContent = spell + (sub ? ` — ${sub}` : "");
+    if (hudSpellEl) hudSpellEl.textContent = spell;
+  }
+
+  function setHudChallenge(title, prog01) {
+    if (challengeTitleEl) challengeTitleEl.textContent = title;
+    if (progressEl) progressEl.style.transform = `scaleX(${Math.max(0, Math.min(1, prog01))})`;
+  }
+
+  function currentChallenge() {
+    return CHALLENGES[challengeIdx % CHALLENGES.length];
+  }
+
+  function advanceChallenge() {
+    pickRandomChallengeIndex();
+    holdAccumMs = 0;
+  }
+
+  function setMode(m) {
+    mode = m === "challenge" ? "challenge" : "free";
+    phase = "active";
+    holdAccumMs = 0;
+    try {
+      localStorage.setItem("shadowPlaygroundMode", mode);
+    } catch (_) {}
+    if (mode === "challenge") {
+      pickRandomChallengeIndex();
+      combo = 0;
+      const c = currentChallenge();
+      setHudChallenge(c.title, 0);
+      setSpellText(c.spell, "챌린지");
+      if (comboEl) comboEl.textContent = `Level ${combo}`;
+    } else {
+      setHudChallenge("[ 자유 모드 ] '손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
+      setSpellText("그림자 연습", "");
+      if (comboEl) comboEl.textContent = "";
+    }
+  }
+
+  function tick(opts) {
+    const { now, dtSec, handsLmArray, hasHands, width, height } = opts;
+    const w = width || 1;
+    const h = height || 1;
+
+    let gesture = "none";
+    if (hasHands && handsLmArray && handsLmArray.length > 0 && G) {
+      gesture = G.detectPrimaryGesture(handsLmArray[0]) || "other";
+    }
+    lastGesture = gesture;
+
+    if (phase === "success" || phase === "fail") {
+      if (now >= phaseUntil) {
+        phase = "active";
+        holdAccumMs = 0;
+        if (mode === "challenge") {
+          const c = currentChallenge();
+          setHudChallenge(c.title, 0);
+          setSpellText(c.spell, "챌린지");
+        }
+      }
+      updateParticles(dtSec, w, h);
+      drawParticles(w, h);
+      return { mode, gesture, combo, phase };
+    }
+
+    if (mode === "free") {
+      const label = hasHands && G ? G.gestureLabel(gesture) : G ? G.gestureLabel("none") : "손을 비춰 주세요";
+      setSpellText(label, "자유 모드");
+      setHudChallenge("[ 자유 모드 ] '손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
+      if (comboEl) comboEl.textContent = "";
+      updateParticles(dtSec, w, h);
+      drawParticles(w, h);
+      return { mode, gesture, combo, phase };
+    }
+
+    const c = currentChallenge();
+    if (!hasHands) {
+      holdAccumMs = Math.max(0, holdAccumMs - dtSec * 800);
+      setHudChallenge(c.title, holdAccumMs / c.holdMs);
+      if (comboEl) comboEl.textContent = `Level ${combo}`;
+      updateParticles(dtSec, w, h);
+      drawParticles(w, h);
+      return { mode, gesture: "none", combo, phase };
+    }
+
+    const match = gesture === c.target;
+    if (match) holdAccumMs += dtSec * 1000;
+    else holdAccumMs = Math.max(0, holdAccumMs - dtSec * 1200);
+
+    const prog = holdAccumMs / c.holdMs;
+    setHudChallenge(c.title, prog);
+    if (comboEl) comboEl.textContent = `Level ${combo}`;
+
+    if (holdAccumMs >= c.holdMs) {
+      combo += 1;
+      const clearedGesture = c.target;
+      const anchor =
+        hasHands && handsLmArray && handsLmArray[0]
+          ? handCenterPx(handsLmArray[0], w, h)
+          : { x: w * 0.5, y: h * 0.42 };
+      playChimeForGesture(clearedGesture);
+      spawnGestureClearEffect(clearedGesture, anchor.x, anchor.y, w, h);
+      phase = "success";
+      phaseUntil = now + 900;
+      setSpellText(c.spell, "성공!");
+      advanceChallenge();
+      const next = currentChallenge();
+      setHudChallenge(next.title, 0);
+      setSpellText(next.spell, "다음 과제");
+    }
+
+    updateParticles(dtSec, w, h);
+    drawParticles(w, h);
+    return { mode, gesture, combo, phase };
+  }
+
+  function init(opts) {
+    particleCanvas = opts.particleCanvas;
+    particleCtx = particleCanvas ? particleCanvas.getContext("2d") : null;
+    spellNameElRef = opts.spellNameEl;
+    hudSpellEl = opts.hudSpellEl;
+    challengeTitleEl = opts.challengeTitleEl;
+    comboEl = opts.comboEl;
+    progressEl = opts.progressEl;
+    if (particleCtx) particleCtx.imageSmoothingEnabled = true;
+  }
+
+  global.ShadowGame = {
+    init,
+    setMode,
+    tick,
+    getMode: () => mode,
+    getCombo: () => combo,
+    getLastGesture: () => lastGesture,
+  };
+})(typeof window !== "undefined" ? window : globalThis);
 
 class OneEuroFilter1D {
   constructor(minCutoff = 1.0, beta = 0.007, dcutoff = 1.0) {
@@ -127,7 +663,7 @@ function getMediaPipeHandsOptions() {
   const cores = typeof navigator !== "undefined" && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
   const modelComplexity = hq && cores >= 4 ? 2 : 1;
   return {
-    maxNumHands: 4,
+    maxNumHands: 1,
     modelComplexity,
     minDetectionConfidence: 0.65,
     minTrackingConfidence: 0.68,
@@ -197,6 +733,10 @@ function resizeCanvases() {
     canvas.width = width;
     canvas.height = height;
   });
+  if (particleCanvas) {
+    particleCanvas.width = width;
+    particleCanvas.height = height;
+  }
 }
 
 window.addEventListener("resize", resizeCanvases);
@@ -209,13 +749,19 @@ function toPx(lm) {
   };
 }
 
-function drawWallBackground(lightX = width * 0.5, lightY = height * 0.44, radius = 320) {
+function drawWallBackground(lightX = width * 0.5, lightY = height * 0.44, radius = 320, moodCombo = 0) {
   outputCtx.clearRect(0, 0, width, height);
   outputCtx.fillStyle = "#000";
   outputCtx.fillRect(0, 0, width, height);
 
+  const t = Math.min(1, Math.max(0, moodCombo / 10));
+  const r0 = Math.round(236 + 18 * t);
+  const g0 = Math.round(206 + 22 * t);
+  const b0 = Math.round(150 + 12 * t);
+  const a0 = 0.72 + 0.1 * t;
+
   const wall = outputCtx.createRadialGradient(lightX, lightY, 30, lightX, lightY, radius);
-  wall.addColorStop(0, "rgba(236, 206, 150, 0.78)");
+  wall.addColorStop(0, `rgba(${r0}, ${g0}, ${b0}, ${a0})`);
   wall.addColorStop(0.45, "rgba(188, 139, 82, 0.62)");
   wall.addColorStop(0.8, "rgba(45, 31, 18, 0.25)");
   wall.addColorStop(1, "rgba(0, 0, 0, 0)");
@@ -560,8 +1106,6 @@ function logMetrics(now, hadDetection, dtMs) {
   const elapsed = now - metrics.lastLogAt;
   const fps = (metrics.frames / elapsed) * 1000;
   const detRate = metrics.detectionFrames / Math.max(1, metrics.frames);
-  metrics.rollingFps = fps;
-  metrics.rollingDetectionRate = detRate;
   console.info(
     "[ShadowPlayGround]",
     `fps≈${fps.toFixed(1)}`,
@@ -601,30 +1145,43 @@ async function startCamera() {
       prevResultIntervalMs = dtMs > 0 ? dtMs : prevResultIntervalMs;
       const dtSec = Math.min(0.08, Math.max(1 / 240, dtMs / 1000));
       lastResultAt = now;
-      lastFrameTime = now;
 
-      const hasHands = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+      const rawLm = results.multiHandLandmarks;
+      const landmarksOne = rawLm && rawLm.length ? rawLm.slice(0, 1) : null;
+      const hasHands = Boolean(landmarksOne && landmarksOne.length);
       let handsForDraw = null;
       let freezeSmoothing = false;
 
       if (hasHands) {
-        const perm = matchHandsToSlots(results.multiHandLandmarks);
-        handsForDraw = orderHandsForSlots(results.multiHandLandmarks, perm);
+        const perm = matchHandsToSlots(landmarksOne);
+        handsForDraw = orderHandsForSlots(landmarksOne, perm);
         lastValidHandsNormalized = handsForDraw;
         lastValidTime = now;
       } else if (lastValidHandsNormalized && now - lastValidTime < HYSTERESIS_MS) {
-        handsForDraw = lastValidHandsNormalized;
+        handsForDraw = lastValidHandsNormalized.slice(0, 1);
         freezeSmoothing = true;
       }
 
       logMetrics(now, hasHands, prevResultIntervalMs);
 
+      if (typeof ShadowGame !== "undefined" && ShadowGame.tick) {
+        ShadowGame.tick({
+          now,
+          dtSec,
+          handsLmArray: landmarksOne,
+          hasHands,
+          width,
+          height,
+        });
+      }
+
+      const moodCombo = typeof ShadowGame !== "undefined" && ShadowGame.getCombo ? ShadowGame.getCombo() : 0;
       if (handsForDraw && handsForDraw.length > 0) {
         const lightInfo = getSmoothedWallLighting(handsForDraw, dtSec);
-        drawWallBackground(lightInfo.centerX, lightInfo.centerY, lightInfo.radius);
+        drawWallBackground(lightInfo.centerX, lightInfo.centerY, lightInfo.radius, moodCombo);
         drawShadowStage(handsForDraw, dtSec, { freezeSmoothing });
       } else {
-        drawWallBackground();
+        drawWallBackground(undefined, undefined, undefined, moodCombo);
         fxCtx.clearRect(0, 0, width, height);
         fxCtx.fillStyle = "rgba(0, 0, 0, 0.96)";
         fxCtx.fillRect(0, 0, width, height);
@@ -648,12 +1205,12 @@ async function startCamera() {
   tryApplyVideoConstraints();
   resizeCanvases();
   lastResultAt = performance.now();
-  lastFrameTime = lastResultAt;
   drawWallBackground();
 
   startBtn.textContent = "실행 중";
   tipEl.textContent = "실행 중";
   startOverlay.classList.add("hidden");
+  if (stageWrap) stageWrap.classList.add("is-playing");
 }
 
 startBtn.addEventListener("click", () => {
@@ -663,6 +1220,7 @@ startBtn.addEventListener("click", () => {
     startBtn.textContent = "다시 시작";
     tipEl.textContent = "카메라 접근 권한을 허용한 뒤 다시 시도해 주세요.";
     startOverlay.classList.remove("hidden");
+    if (stageWrap) stageWrap.classList.remove("is-playing");
   });
 });
 
@@ -673,3 +1231,39 @@ sidebarBackdrop.addEventListener("click", closeSidebar);
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeSidebar();
 });
+
+function syncModeButtons() {
+  if (!modeFreeBtn || !modeChallengeBtn || typeof ShadowGame === "undefined") return;
+  const m = ShadowGame.getMode();
+  modeFreeBtn.classList.toggle("mode-btn-active", m === "free");
+  modeChallengeBtn.classList.toggle("mode-btn-active", m === "challenge");
+}
+
+if (typeof ShadowGame !== "undefined" && ShadowGame.init) {
+  ShadowGame.init({
+    particleCanvas,
+    spellNameEl,
+    hudSpellEl: document.getElementById("hudSpell"),
+    challengeTitleEl: document.getElementById("challengeTitle"),
+    comboEl: document.getElementById("comboDisplay"),
+    progressEl: document.getElementById("challengeProgress"),
+  });
+  try {
+    const saved = localStorage.getItem("shadowPlaygroundMode");
+    ShadowGame.setMode(saved === "challenge" ? "challenge" : "free");
+  } catch (_) {
+    ShadowGame.setMode("free");
+  }
+  syncModeButtons();
+}
+
+if (modeFreeBtn && modeChallengeBtn) {
+  modeFreeBtn.addEventListener("click", () => {
+    ShadowGame.setMode("free");
+    syncModeButtons();
+  });
+  modeChallengeBtn.addEventListener("click", () => {
+    ShadowGame.setMode("challenge");
+    syncModeButtons();
+  });
+}

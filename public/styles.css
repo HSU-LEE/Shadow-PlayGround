@@ -50,7 +50,8 @@ body {
 
 #video,
 #outputCanvas,
-#fxCanvas {
+#fxCanvas,
+#particleCanvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -63,8 +64,100 @@ body {
 }
 
 #outputCanvas,
-#fxCanvas {
+#fxCanvas,
+#particleCanvas {
   pointer-events: none;
+}
+
+#particleCanvas {
+  z-index: 5;
+}
+
+.stage-hud {
+  position: absolute;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  transform: translateX(-50%);
+  z-index: 11;
+  max-width: min(92vw, 420px);
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.stage-wrap.is-playing .stage-hud {
+  opacity: 1;
+}
+
+.hud-spell {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff4e0;
+  letter-spacing: 0.02em;
+}
+
+.hud-challenge {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: rgba(255, 236, 210, 0.88);
+}
+
+.hud-progress-wrap {
+  height: 4px;
+  margin: 0 auto 6px;
+  max-width: 220px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.hud-progress {
+  height: 100%;
+  width: 100%;
+  border-radius: 999px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, #8b5a2b, #f0c878);
+  transition: transform 0.08s ease-out;
+}
+
+.hud-combo {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #ffd79a;
+  min-height: 1.2em;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 225, 171, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffe8c4;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mode-btn:hover {
+  background: rgba(40, 28, 16, 0.65);
+}
+
+.mode-btn-active {
+  border-color: rgba(240, 189, 111, 0.75);
+  background: rgba(90, 58, 22, 0.55);
+  color: #fff8e8;
 }
 
 .start-overlay {

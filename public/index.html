@@ -14,6 +14,16 @@
         <video id="video" autoplay playsinline muted></video>
         <canvas id="outputCanvas"></canvas>
         <canvas id="fxCanvas"></canvas>
+        <canvas id="particleCanvas" aria-hidden="true"></canvas>
+
+        <div class="stage-hud" id="stageHud">
+          <p class="hud-spell" id="hudSpell">준비 중…</p>
+          <p class="hud-challenge" id="challengeTitle">자유 모드</p>
+          <div class="hud-progress-wrap" aria-hidden="true">
+            <div class="hud-progress" id="challengeProgress"></div>
+          </div>
+          <p class="hud-combo" id="comboDisplay" aria-live="polite"></p>
+        </div>
 
         <div class="start-overlay" id="startOverlay">
           <button id="startBtn">시작</button>
@@ -34,6 +44,14 @@
         <a href="https://github.com/HSU-LEE" target="_blank" rel="noopener noreferrer">
           github.com/HSU-LEE
         </a>
+      </section>
+
+      <section class="sidebar-section">
+        <h3>플레이 모드</h3>
+        <div class="mode-toggle" role="group" aria-label="플레이 모드">
+          <button type="button" class="mode-btn mode-btn-active" id="modeFreeBtn">자유 모드</button>
+          <button type="button" class="mode-btn" id="modeChallengeBtn">챌린지</button>
+        </div>
       </section>
 
       <section class="sidebar-section">
@@ -58,7 +76,6 @@
     </aside>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="./app.js"></script>
   </body>
