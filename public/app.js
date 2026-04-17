@@ -13,6 +13,7 @@ const particleCanvas = document.getElementById("particleCanvas");
 const stageWrap = document.querySelector(".stage-wrap");
 const modeFreeBtn = document.getElementById("modeFreeBtn");
 const modeChallengeBtn = document.getElementById("modeChallengeBtn");
+const modeLearnBtn = document.getElementById("modeLearnBtn");
 
 const outputCtx = outputCanvas.getContext("2d");
 const fxCtx = fxCanvas.getContext("2d");
@@ -135,6 +136,9 @@ const metrics = {
     const pink = fingerExtended(lm, 20, 18, 17);
     const th = thumbExtended(lm);
     if (ext >= 4) return "open_palm";
+
+    // 여우 얼굴(ILY) — 브이보다 먼저 분기
+    if (th && idx && pink && !mid && !ring) return "fox";
     if (idx && mid && !ring && !pink) return "peace";
 
     // 주먹을 핀치보다 먼저 본다 — 말아쥔 상태에서 엄지·검지가 가깝게 잡히며 오인되는 경우가 많음
@@ -155,11 +159,12 @@ const metrics = {
     return "other";
   }
   const LABELS = {
-    open_palm: "손바닥 펼침",
-    fist: "주먹",
-    peace: "브이",
-    thumbs_up: "엄지척",
-    pinch: "집게",
+    open_palm: "새 날개 (손바닥 펼침)",
+    fist: "곰 손 (주먹)",
+    peace: "토끼 귀 (브이)",
+    thumbs_up: "강아지 (엄지척)",
+    pinch: "오리 부리 (집게)",
+    fox: "여우 얼굴",
     other: "그림자 연습",
     none: "손을 비춰 주세요",
   };
@@ -173,11 +178,59 @@ const metrics = {
 (function (global) {
   const G = global.ShadowGestures;
   const CHALLENGES = [
-    { id: "c1", target: "open_palm", holdMs: 2200, title: "손바닥을 펼쳐 조명을 가득 채워 보세요", spell: "손바닥 펼침" },
-    { id: "c2", target: "fist", holdMs: 2000, title: "주먹을 쥐어 그림자를 모아 보세요", spell: "주먹" },
-    { id: "c3", target: "peace", holdMs: 2200, title: "브이로 인사해 보세요", spell: "브이" },
-    { id: "c4", target: "thumbs_up", holdMs: 1800, title: "엄지척으로 응원해 보세요", spell: "엄지척" },
+    { id: "c1", target: "open_palm", holdMs: 2200, title: "손바닥을 펼쳐 새 날개 그림자를 만들어 보세요", spell: "새 날개 (손바닥 펼침)" },
+    { id: "c2", target: "fist", holdMs: 2000, title: "손가락을 말아 곰 손(주먹)을 만들어 보세요", spell: "곰 손 (주먹)" },
+    { id: "c3", target: "peace", holdMs: 2200, title: "검지·중지로 토끼 귀(브이)를 만들어 보세요", spell: "토끼 귀 (브이)" },
+    { id: "c4", target: "thumbs_up", holdMs: 1800, title: "엄지를 세워 강아지 인사를 해 보세요", spell: "강아지 (엄지척)" },
+    { id: "c5", target: "fox", holdMs: 2600, title: "엄지·검지·새끼만 펴 여우 얼굴을 만들어 보세요", spell: "여우 얼굴" },
+    { id: "c6", target: "pinch", holdMs: 2000, title: "엄지와 검지를 붙여 오리 부리를 만들어 보세요", spell: "오리 부리 (집게)" },
   ];
+
+  const LEARN_STEPS = [
+    {
+      id: "learn1",
+      target: "peace",
+      holdMs: 2200,
+      title: "검지·중지만 펼쳐 토끼 귀(브이)를 만들어 보세요",
+      spell: "토끼 귀 (브이)",
+    },
+    {
+      id: "learn2",
+      target: "fox",
+      holdMs: 2600,
+      title: "엄지·검지·새끼만 펴고 중지·약지는 접어 여우 얼굴을 만들어 보세요",
+      spell: "여우 얼굴",
+    },
+    {
+      id: "learn3",
+      target: "open_palm",
+      holdMs: 2200,
+      title: "손가락을 쭉 펴 손바닥을 펼쳐 새 날개처럼 보이게 해 보세요",
+      spell: "새 날개 (손바닥 펼침)",
+    },
+    {
+      id: "learn4",
+      target: "fist",
+      holdMs: 2000,
+      title: "손가락을 말아 주먹을 쥐어 곰 손을 만들어 보세요",
+      spell: "곰 손 (주먹)",
+    },
+    {
+      id: "learn5",
+      target: "thumbs_up",
+      holdMs: 1800,
+      title: "엄지를 세워 강아지 인사를 해 보세요",
+      spell: "강아지 (엄지척)",
+    },
+    {
+      id: "learn6",
+      target: "pinch",
+      holdMs: 2000,
+      title: "엄지와 검지 끝을 붙여 오리 부리를 만들어 보세요",
+      spell: "오리 부리 (집게)",
+    },
+  ];
+
   let mode = "free";
   let particleCanvas = null;
   let particleCtx = null;
@@ -187,6 +240,9 @@ const metrics = {
   let comboEl = null;
   let progressEl = null;
   let challengeIdx = 0;
+  let learnIdx = 0;
+  /** 동물 연습 마지막 과제까지 끝난 뒤, 성공 연출이 끝나면 처음으로 돌아갈 때까지 true */
+  let learnFullCycleComplete = false;
   let holdAccumMs = 0;
   let combo = 0;
   let phase = "active";
@@ -215,6 +271,7 @@ const metrics = {
       peace: { f0: 523.25, f1: 659.25, t0: "sine", t1: "sine", gap: 0.09, peak: 0.1 },
       pinch: { f0: 1046.5, f1: null, t0: "sine", t1: null, gap: 0, peak: 0.09 },
       thumbs_up: { f0: 392, f1: 493.88, t0: "sine", t1: "sine", gap: 0.07, peak: 0.12 },
+      fox: { f0: 440, f1: 554.37, t0: "sine", t1: "sine", gap: 0.07, peak: 0.1 },
     };
     const p = profiles[gesture] || profiles.open_palm;
     try {
@@ -393,6 +450,28 @@ const metrics = {
       return;
     }
 
+    if (gesture === "fox") {
+      const n = 32;
+      for (let i = 0; i < n; i++) {
+        const ang = rnd(-Math.PI * 0.65, Math.PI * 0.65) - Math.PI * 0.5;
+        const sp = rnd(0.9, 2.2) * 42;
+        pushP({
+          x: cx + rnd(-12, 12),
+          y: cy + rnd(-6, 14),
+          vx: Math.cos(ang) * sp + rnd(-18, 18),
+          vy: -rnd(55, 120) + Math.sin(ang) * sp * 0.35,
+          life: rnd(0.78, 1.08),
+          hue: rnd(18, 42),
+          grav: rnd(42, 68),
+          lightness: rnd(66, 80),
+          sat: rnd(80, 96),
+          size0: 1.9,
+          size1: 3.6,
+        });
+      }
+      return;
+    }
+
     const n = 26;
     for (let i = 0; i < n; i++) {
       const ang = (Math.PI * 2 * i) / n + rnd(-0.3, 0.3);
@@ -466,26 +545,46 @@ const metrics = {
     return CHALLENGES[challengeIdx % CHALLENGES.length];
   }
 
+  function activeStep() {
+    if (mode === "learn") return LEARN_STEPS[learnIdx % LEARN_STEPS.length];
+    return CHALLENGES[challengeIdx % CHALLENGES.length];
+  }
+
   function advanceChallenge() {
     pickRandomChallengeIndex();
     holdAccumMs = 0;
   }
 
+  function advanceLearn() {
+    learnIdx = (learnIdx + 1) % LEARN_STEPS.length;
+    holdAccumMs = 0;
+  }
+
   function setMode(m) {
-    mode = m === "challenge" ? "challenge" : "free";
+    mode = m === "challenge" ? "challenge" : m === "learn" ? "learn" : "free";
     phase = "active";
     holdAccumMs = 0;
+    learnFullCycleComplete = false;
     try {
       localStorage.setItem("shadowPlaygroundMode", mode);
     } catch (_) {}
     if (mode === "challenge") {
+      learnIdx = 0;
       pickRandomChallengeIndex();
       combo = 0;
       const c = currentChallenge();
       setHudChallenge(c.title, 0);
       setSpellText(c.spell, "챌린지");
       if (comboEl) comboEl.textContent = `Level ${combo}`;
+    } else if (mode === "learn") {
+      learnIdx = 0;
+      combo = 0;
+      const L = LEARN_STEPS[learnIdx % LEARN_STEPS.length];
+      setHudChallenge(L.title, 0);
+      setSpellText(L.spell, "동물 연습");
+      if (comboEl) comboEl.textContent = `과제 ${learnIdx + 1}/${LEARN_STEPS.length}`;
     } else {
+      learnIdx = 0;
       setHudChallenge("[ 자유 모드 ] '손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
       setSpellText("그림자 연습", "");
       if (comboEl) comboEl.textContent = "";
@@ -511,6 +610,21 @@ const metrics = {
           const c = currentChallenge();
           setHudChallenge(c.title, 0);
           setSpellText(c.spell, "챌린지");
+          if (comboEl) comboEl.textContent = `Level ${combo}`;
+        } else if (mode === "learn") {
+          if (learnFullCycleComplete) {
+            learnFullCycleComplete = false;
+            learnIdx = 0;
+            const L = LEARN_STEPS[0];
+            setHudChallenge(L.title, 0);
+            setSpellText(L.spell, "동물 연습");
+            if (comboEl) comboEl.textContent = `과제 ${learnIdx + 1}/${LEARN_STEPS.length}`;
+          } else {
+            const L = activeStep();
+            setHudChallenge(L.title, 0);
+            setSpellText(L.spell, "동물 연습");
+            if (comboEl) comboEl.textContent = `과제 ${learnIdx + 1}/${LEARN_STEPS.length}`;
+          }
         }
       }
       updateParticles(dtSec, w, h);
@@ -528,27 +642,33 @@ const metrics = {
       return { mode, gesture, combo, phase };
     }
 
-    const c = currentChallenge();
+    const step = activeStep();
     if (!hasHands) {
       holdAccumMs = Math.max(0, holdAccumMs - dtSec * 800);
-      setHudChallenge(c.title, holdAccumMs / c.holdMs);
-      if (comboEl) comboEl.textContent = `Level ${combo}`;
+      setHudChallenge(step.title, holdAccumMs / step.holdMs);
+      if (comboEl) {
+        comboEl.textContent =
+          mode === "learn" ? `과제 ${learnIdx + 1}/${LEARN_STEPS.length}` : `Level ${combo}`;
+      }
       updateParticles(dtSec, w, h);
       drawParticles(w, h);
       return { mode, gesture: "none", combo, phase };
     }
 
-    const match = gesture === c.target;
+    const match = gesture === step.target;
     if (match) holdAccumMs += dtSec * 1000;
     else holdAccumMs = Math.max(0, holdAccumMs - dtSec * 1200);
 
-    const prog = holdAccumMs / c.holdMs;
-    setHudChallenge(c.title, prog);
-    if (comboEl) comboEl.textContent = `Level ${combo}`;
+    const prog = holdAccumMs / step.holdMs;
+    setHudChallenge(step.title, prog);
+    if (comboEl) {
+      comboEl.textContent =
+        mode === "learn" ? `과제 ${learnIdx + 1}/${LEARN_STEPS.length}` : `Level ${combo}`;
+    }
 
-    if (holdAccumMs >= c.holdMs) {
+    if (holdAccumMs >= step.holdMs) {
       combo += 1;
-      const clearedGesture = c.target;
+      const clearedGesture = step.target;
       const anchor =
         hasHands && handsLmArray && handsLmArray[0]
           ? handCenterPx(handsLmArray[0], w, h)
@@ -556,12 +676,30 @@ const metrics = {
       playChimeForGesture(clearedGesture);
       spawnGestureClearEffect(clearedGesture, anchor.x, anchor.y, w, h);
       phase = "success";
-      phaseUntil = now + 900;
-      setSpellText(c.spell, "성공!");
-      advanceChallenge();
-      const next = currentChallenge();
-      setHudChallenge(next.title, 0);
-      setSpellText(next.spell, "다음 과제");
+      const learnLastStep = mode === "learn" && learnIdx === LEARN_STEPS.length - 1;
+      phaseUntil = now + (learnLastStep ? 2600 : 900);
+      setSpellText(step.spell, "성공!");
+      if (mode === "learn") {
+        if (learnLastStep) {
+          learnFullCycleComplete = true;
+        } else {
+          advanceLearn();
+        }
+      } else {
+        advanceChallenge();
+      }
+      if (mode === "learn" && learnFullCycleComplete) {
+        setHudChallenge("동물 연습을 모두 마쳤어요! 잘했어요 : )", 1);
+        setSpellText("동물 연습 끝!", "전체 완료");
+        if (comboEl) comboEl.textContent = "모든 과제를 완료했어요";
+      } else {
+        const next = activeStep();
+        setHudChallenge(next.title, 0);
+        setSpellText(next.spell, mode === "learn" ? "다음 동물" : "다음 과제");
+        if (mode === "learn" && comboEl) {
+          comboEl.textContent = `과제 ${learnIdx + 1}/${LEARN_STEPS.length}`;
+        }
+      }
     }
 
     updateParticles(dtSec, w, h);
@@ -1237,6 +1375,7 @@ function syncModeButtons() {
   const m = ShadowGame.getMode();
   modeFreeBtn.classList.toggle("mode-btn-active", m === "free");
   modeChallengeBtn.classList.toggle("mode-btn-active", m === "challenge");
+  if (modeLearnBtn) modeLearnBtn.classList.toggle("mode-btn-active", m === "learn");
 }
 
 if (typeof ShadowGame !== "undefined" && ShadowGame.init) {
@@ -1250,7 +1389,9 @@ if (typeof ShadowGame !== "undefined" && ShadowGame.init) {
   });
   try {
     const saved = localStorage.getItem("shadowPlaygroundMode");
-    ShadowGame.setMode(saved === "challenge" ? "challenge" : "free");
+    ShadowGame.setMode(
+      saved === "challenge" ? "challenge" : saved === "learn" ? "learn" : "free"
+    );
   } catch (_) {
     ShadowGame.setMode("free");
   }
@@ -1264,6 +1405,12 @@ if (modeFreeBtn && modeChallengeBtn) {
   });
   modeChallengeBtn.addEventListener("click", () => {
     ShadowGame.setMode("challenge");
+    syncModeButtons();
+  });
+}
+if (modeLearnBtn) {
+  modeLearnBtn.addEventListener("click", () => {
+    ShadowGame.setMode("learn");
     syncModeButtons();
   });
 }
