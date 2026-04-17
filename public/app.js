@@ -137,11 +137,9 @@ const metrics = {
     const th = thumbExtended(lm);
     if (ext >= 4) return "open_palm";
 
-    // 여우 얼굴(ILY) — 브이보다 먼저 분기
     if (th && idx && pink && !mid && !ring) return "fox";
     if (idx && mid && !ring && !pink) return "peace";
 
-    // 주먹을 핀치보다 먼저 본다 — 말아쥔 상태에서 엄지·검지가 가깝게 잡히며 오인되는 경우가 많음
     if (fourNonThumbCurledForFist(lm)) {
       const thumbIndexGap = distLm(lm[4], lm[8]);
       if (th && thumbIndexGap > scale * 0.38) return "thumbs_up";
@@ -241,7 +239,6 @@ const metrics = {
   let progressEl = null;
   let challengeIdx = 0;
   let learnIdx = 0;
-  /** 동물 연습 마지막 과제까지 끝난 뒤, 성공 연출이 끝나면 처음으로 돌아갈 때까지 true */
   let learnFullCycleComplete = false;
   let holdAccumMs = 0;
   let combo = 0;
