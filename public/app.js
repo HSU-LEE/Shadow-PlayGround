@@ -158,7 +158,7 @@ const metrics = {
   }
   const LABELS = {
     open_palm: "새 날개 (손바닥 펼침)",
-    fist: "곰 손 (주먹)",
+    fist: "곰 (주먹)",
     peace: "토끼 귀 (브이)",
     thumbs_up: "강아지 (엄지척)",
     pinch: "오리 부리 (집게)",
@@ -177,7 +177,7 @@ const metrics = {
   const G = global.ShadowGestures;
   const CHALLENGES = [
     { id: "c1", target: "open_palm", holdMs: 2200, title: "손바닥을 펼쳐 새 날개 그림자를 만들어 보세요", spell: "새 날개 (손바닥 펼침)" },
-    { id: "c2", target: "fist", holdMs: 2000, title: "손가락을 말아 곰 손(주먹)을 만들어 보세요", spell: "곰 손 (주먹)" },
+    { id: "c2", target: "fist", holdMs: 2000, title: "손가락을 말아 곰(주먹)을 만들어 보세요", spell: "곰 (주먹)" },
     { id: "c3", target: "peace", holdMs: 2200, title: "검지·중지로 토끼 귀(브이)를 만들어 보세요", spell: "토끼 귀 (브이)" },
     { id: "c4", target: "thumbs_up", holdMs: 1800, title: "엄지를 세워 강아지 인사를 해 보세요", spell: "강아지 (엄지척)" },
     { id: "c5", target: "fox", holdMs: 2600, title: "엄지·검지·새끼만 펴 여우 얼굴을 만들어 보세요", spell: "여우 얼굴" },
@@ -210,8 +210,8 @@ const metrics = {
       id: "learn4",
       target: "fist",
       holdMs: 2000,
-      title: "손가락을 말아 주먹을 쥐어 곰 손을 만들어 보세요",
-      spell: "곰 손 (주먹)",
+      title: "손가락을 말아 주먹을 쥐어 곰을 만들어 보세요",
+      spell: "곰 (주먹)",
     },
     {
       id: "learn5",
@@ -300,7 +300,7 @@ const metrics = {
 
   function handCenterPx(lm, w, h) {
     if (!lm || lm.length < 10) return { x: w * 0.5, y: h * 0.42 };
-    const px = (i) => ({ x: (1 - lm[i].x) * w, y: lm[i].y * h });
+    const px = (i) => toPx(lm[i]);
     const a = px(0);
     const b = px(5);
     const c = px(9);
@@ -582,7 +582,7 @@ const metrics = {
       if (comboEl) comboEl.textContent = `과제 ${learnIdx + 1}/${LEARN_STEPS.length}`;
     } else {
       learnIdx = 0;
-      setHudChallenge("[ 자유 모드 ] '손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
+      setHudChallenge("'손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
       setSpellText("그림자 연습", "");
       if (comboEl) comboEl.textContent = "";
     }
@@ -632,7 +632,7 @@ const metrics = {
     if (mode === "free") {
       const label = hasHands && G ? G.gestureLabel(gesture) : G ? G.gestureLabel("none") : "손을 비춰 주세요";
       setSpellText(label, "자유 모드");
-      setHudChallenge("[ 자유 모드 ] '손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
+      setHudChallenge("'손 모양을 바꿔 그림자 극장을 즐겨 보세요'", 0);
       if (comboEl) comboEl.textContent = "";
       updateParticles(dtSec, w, h);
       drawParticles(w, h);
@@ -806,8 +806,7 @@ function getMediaPipeHandsOptions() {
 }
 
 function wristPxFromLandmarks(handLm) {
-  const w = handLm[0];
-  return { x: (1 - w.x) * width, y: w.y * height };
+  return toPx(handLm[0]);
 }
 
 function matchHandsToSlots(currentHandsLm) {
@@ -877,9 +876,37 @@ function resizeCanvases() {
 window.addEventListener("resize", resizeCanvases);
 
 function toPx(lm) {
+  const vw = videoEl.videoWidth || width;
+  const vh = videoEl.videoHeight || height;
+  const cw = width;
+  const ch = height;
+  const nx = 1 - lm.x;
+  const ny = lm.y;
+
+  const videoAR = vw / vh;
+  const canvasAR = cw / ch;
+  const useCover =
+    videoEl.videoWidth > 0 &&
+    videoEl.videoHeight > 0 &&
+    Math.abs(videoAR - canvasAR) >= 0.004;
+
+  if (!useCover) {
+    return {
+      x: nx * cw,
+      y: ny * ch,
+      z: lm.z || 0,
+    };
+  }
+
+  const scale = Math.max(cw / vw, ch / vh);
+  const dispW = vw * scale;
+  const dispH = vh * scale;
+  const offX = (cw - dispW) * 0.5;
+  const offY = (ch - dispH) * 0.5;
+
   return {
-    x: (1 - lm.x) * width,
-    y: lm.y * height,
+    x: nx * vw * scale + offX,
+    y: ny * vh * scale + offY,
     z: lm.z || 0,
   };
 }

@@ -11,5 +11,5 @@ app.get("/health", (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Magic gesture app running on http://localhost:${PORT}`);
+  console.log(`Shadow PlayGround running on http://localhost:${PORT}`);
 });
