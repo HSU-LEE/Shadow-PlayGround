@@ -5,7 +5,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "lint": "eslint public/js tests",
+    "format": "prettier --write public/js tests eslint.config.mjs vitest.config.js",
+    "test": "vitest run"
   },
   "keywords": [
     "mediapipe",
@@ -23,9 +26,16 @@
   "homepage": "https://hsu-lee.github.io/Shadow-PlayGround/",
   "bugs": {
     "url": "https://github.com/HSU-LEE/Shadow-PlayGround/issues"
-  },
+  },   
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.4.2",
+    "vitest": "^2.1.6"
   }
 }

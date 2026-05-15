@@ -1,0 +1,16 @@
+{
+  "name": "Shadow PlayGround",
+  "short_name": "Shadow",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#13100a",
+  "theme_color": "#13100a",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

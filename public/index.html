@@ -3,88 +3,118 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#13100a" />
     <meta
       name="google-site-verification"
       content="XksL7XVPE_iT2dn2rlfW7GUDFH6qBERQF0MAFqzX_n0"
     />
     <meta name="twitter:card" content="summary_large_image" />
     <title>Shadow PlayGround</title>
+    <link rel="manifest" href="./site.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>  
+  <body>
     <main class="app">
       <section class="stage-wrap">
-        <button id="menuBtn" class="menu-btn" aria-label="메뉴 열기">☰</button>
+        <button
+          type="button"
+          id="menuBtn"
+          class="menu-btn"
+          data-i18n-aria="aria.menuOpen"
+        >
+          ☰
+        </button>
         <video id="video" autoplay playsinline muted></video>
         <canvas id="outputCanvas"></canvas>
         <canvas id="fxCanvas"></canvas>
         <canvas id="particleCanvas" aria-hidden="true"></canvas>
 
         <div class="stage-hud" id="stageHud">
-          <p class="hud-spell" id="hudSpell">준비 중…</p>
-          <p class="hud-challenge" id="challengeTitle">자유 모드</p>
+          <p class="hud-spell" id="hudSpell">…</p>
+          <p class="hud-challenge" id="challengeTitle"></p>
           <div class="hud-progress-wrap" aria-hidden="true">
             <div class="hud-progress" id="challengeProgress"></div>
           </div>
           <p class="hud-combo" id="comboDisplay" aria-live="polite"></p>
+          <p class="hud-coach" id="hudCoach" aria-live="polite"></p>
         </div>
 
         <div class="start-overlay" id="startOverlay">
-          <button id="startBtn">시작</button>
-          <p id="gestureTip">조명에 손을 올려 그림자를 만들어보세요 : )</p>
+          <div id="startSpinner" class="start-spinner hidden" aria-hidden="true"></div>
+          <button type="button" id="startBtn" data-i18n="start.btn">시작</button>
+          <p id="gestureTip" data-i18n="start.tipDefault"></p>
         </div>
 
-        <div class="sr-only">현재 그림자: <strong id="spellName">준비 중...</strong></div>
+        <div class="sr-only">현재 그림자: <strong id="spellName">…</strong></div>
       </section>
     </main>
 
     <div id="sidebarBackdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
-    <aside id="sidebar" class="sidebar hidden" aria-label="프로젝트 메뉴">
-      <button id="closeSidebarBtn" class="close-sidebar-btn" aria-label="메뉴 닫기">×</button>
+    <aside id="sidebar" class="sidebar hidden" data-i18n-aria="aria.sidebar">
+      <button
+        type="button"
+        id="closeSidebarBtn"
+        class="close-sidebar-btn"
+        data-i18n-aria="aria.menuClose"
+      >
+        ×
+      </button>
       <h2>Shadow PlayGround</h2>
 
-      <section class="sidebar-section">
-        <h3>GitHub</h3>
+      <details class="sidebar-details" open>
+        <summary data-i18n="sidebar.github"></summary>
         <a href="https://github.com/HSU-LEE" target="_blank" rel="noopener noreferrer">
           github.com/HSU-LEE
         </a>
-      </section>
+      </details>
 
-      <section class="sidebar-section">
-        <h3>플레이 모드</h3>
-        <div class="mode-toggle" role="group" aria-label="플레이 모드">
-          <button type="button" class="mode-btn mode-btn-active" id="modeFreeBtn">자유 모드</button>
-          <button type="button" class="mode-btn" id="modeChallengeBtn">챌린지</button>
-          <button type="button" class="mode-btn" id="modeLearnBtn">동물 연습</button>
+      <details class="sidebar-details" open>
+        <summary data-i18n="sidebar.playModes"></summary>
+        <div class="mode-toggle" role="group" data-i18n-aria="aria.playModeGroup">
+          <button type="button" class="mode-btn mode-btn-active" id="modeFreeBtn" data-i18n="sidebar.modeFree"></button>
+          <button type="button" class="mode-btn" id="modeChallengeBtn" data-i18n="sidebar.modeChallenge"></button>
+          <button type="button" class="mode-btn" id="modeLearnBtn" data-i18n="sidebar.modeLearn"></button>
         </div>
-      </section>
+      </details>
 
-      <section class="sidebar-section">
-        <h3>설명</h3>
-        <p>조명에 손을 올려 그림자를 만들어보세요 : )</p>
-        <p class="sidebar-hint">
-          인식이 불안정하면 손을 화면 중앙 또는 밝은 쪽으로 두고, 얼굴 대신 손이 카메라에 잘 보이게 해 주세요.
-        </p>
-        <p class="sidebar-hint">
-          <strong>동물 연습</strong>에서는 토끼·여우·새·곰·강아지·오리처럼 그림자 놀이에 쓰기 쉬운 손모양을 순서대로 익힐 수 있어요. 화면 안내에 맞춰 잠시 유지하면 다음 단계로 넘어갑니다.
-        </p>
-      </section>
+      <details class="sidebar-details" open>
+        <summary data-i18n="sidebar.settings"></summary>
+        <label class="settings-row">
+          <input type="checkbox" id="perfToggle" />
+          <span data-i18n="settings.perf"></span>
+        </label>
+        <label class="settings-row">
+          <input type="checkbox" id="soundToggle" checked />
+          <span data-i18n="settings.sound"></span>
+        </label>
+        <label class="settings-row settings-lang">
+          <span data-i18n="settings.lang"></span>
+          <select id="langSelect" aria-label="Language">
+            <option value="ko">한국어</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+      </details>
 
-      <section class="sidebar-section">
-        <h3>개발자 커피 사주기</h3>
-        <p>
-          토스뱅크 1908-1194-4861
-        </p>
-      </section>
+      <details class="sidebar-details" open>
+        <summary data-i18n="sidebar.about"></summary>
+        <p data-i18n="sidebar.aboutBody"></p>
+        <p class="sidebar-hint" data-i18n="sidebar.learnHint"></p>
+      </details>
 
-      <section class="sidebar-section">
-        <h3>버그 제보 및 문의</h3>
+      <details class="sidebar-details">
+        <summary data-i18n="sidebar.support"></summary>
+        <p>토스뱅크 1908-1194-4861</p>
+      </details>
+
+      <details class="sidebar-details">
+        <summary data-i18n="sidebar.contact"></summary>
         <p>harry.srobot.2011@gmail.com</p>
-      </section>
+      </details>
     </aside>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="./app.js"></script>
+    <script type="module" src="./js/main.js"></script>
   </body>
 </html>

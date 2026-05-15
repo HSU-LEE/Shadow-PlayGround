@@ -1,6 +1,19 @@
 :root {
   --bg: #13100a;
   --text: #fff2d6;
+  --text-muted: rgba(255, 236, 210, 0.88);
+  --accent: #f0bd6f;
+  --accent-soft: #ffe8c4;
+  --radius-pill: 999px;
+  --radius-btn: 10px;
+  --radius-card: 14px;
+  --space-xs: 6px;
+  --space-sm: 10px;
+  --space-md: 14px;
+  --space-lg: 18px;
+  --font-ui: "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  --font-size-hud: 1.05rem;
+  --font-size-small: 0.82rem;
 }
 
 * {
@@ -9,7 +22,7 @@
 
 body {
   margin: 0;
-  font-family: "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  font-family: var(--font-ui);
   color: var(--text);
   background: #000;
   min-height: 100dvh;
@@ -92,8 +105,8 @@ body {
 }
 
 .hud-spell {
-  margin: 0 0 6px;
-  font-size: 1.05rem;
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-hud);
   font-weight: 600;
   color: #fff4e0;
   letter-spacing: 0.02em;
@@ -103,7 +116,7 @@ body {
   margin: 0 0 8px;
   font-size: 0.78rem;
   line-height: 1.35;
-  color: rgba(255, 236, 210, 0.88);
+  color: var(--text-muted);
 }
 
 .hud-progress-wrap {
@@ -142,11 +155,11 @@ body {
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-btn);
   border: 1px solid rgba(255, 225, 171, 0.35);
   background: rgba(0, 0, 0, 0.35);
-  color: #ffe8c4;
-  font-size: 0.82rem;
+  color: var(--accent-soft);
+  font-size: var(--font-size-small);
   cursor: pointer;
 }
 
@@ -174,12 +187,17 @@ body {
 #startBtn {
   justify-self: center;
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #a97639, #f0bd6f);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, #a97639, var(--accent));
   color: white;
   padding: 12px 28px;
   font-size: 1rem;
   cursor: pointer;
+}
+
+#startBtn:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 #startBtn:hover {
@@ -274,4 +292,88 @@ body {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   border: 0;
+}
+
+.hud-coach {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(255, 214, 160, 0.92);
+  min-height: 1.2em;
+}
+
+.start-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 225, 171, 0.25);
+  border-top-color: var(--accent);
+  animation: spin 0.75s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-hud {
+    transition: none;
+  }
+  .start-spinner {
+    animation: none;
+    border-top-color: rgba(255, 225, 171, 0.45);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.sidebar-details {
+  margin-bottom: var(--space-md);
+  border-bottom: 1px solid rgba(255, 225, 171, 0.12);
+  padding-bottom: var(--space-sm);
+}
+
+.sidebar-details summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #ffe8c4;
+  margin-bottom: var(--space-xs);
+}
+
+.sidebar-details p,
+.sidebar-details a {
+  margin: 0;
+  color: #ffd89b;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.settings-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  font-size: 0.86rem;
+  line-height: 1.35;
+  color: #ffd89b;
+}
+
+.settings-row input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.settings-lang {
+  flex-wrap: wrap;
+}
+
+.settings-lang select {
+  margin-left: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 225, 171, 0.35);
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffeacc;
+  padding: 4px 8px;
 }
